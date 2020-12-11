@@ -1,4 +1,4 @@
-//-----------Importación de las librerías necesarias para la minishell-----------
+//-----------Importación de las librerías necesarias para la minishell-----------\\
 
 #include <stdio.h>
 #include <signal.h>
@@ -7,48 +7,52 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <string.h>
+#include <errno.h>
 
 #include "parser.h"
 
 
 
-//-----------Subfunciones usadas dentro del main-----------
+//-----------Subfunciones usadas dentro del main-----------\\
 
 void prompt(); // Escribe el prompt por pantalla
 void cd(tcommand cmd); // Mandato interno cd
+int comandosCoincidentes(tcommand cmd, char *nombre);
 
 
-
-//-----------Función main-----------
+//-----------Función main-----------\\
 
 int main(void){ 
 	char buf[1024];
 	tline *line;
 	int i,j;
     pid_t pid;
+    char *token;
 
     prompt();
     signal(SIGINT, SIG_IGN);
     signal(SIGQUIT, SIG_IGN);
 	while (fgets(buf, 1024, stdin)) {
 	    
-        	
-		line = tokenize(buf);
+    	line = tokenize(buf);
     	if (line == NULL) {
-            printf("Traza");
-		//	continue;
+			continue;
 		}
-       /* if (line != NULL && line->commands[0].argv[0] == "cd"){
-            if (line->ncommands > 1){
-                fprintf(stderr, "El cd no se usa con pipes");
-            } else {
-                cd(line->commands[0]);
+        
+        if (line->ncommands > 0){ // Números de mandatos mayor que 0
+            if (comandosCoincidentes(line->commands[0],"cd") == 0){ 
+                cd(line->commands[0]); // Comprueba si el mandato pasado es cd y lo ejecuta 
             }
-            printf("Traza 4");
+           /* if (comandosCoincidentes(line->commands[0], "jobs") == 0){
+              //jobs(); // Comprueba si el mandato pasado es jobs y lo ejecuta
+            }
+            if (comandosCoincidentes(line->commands[0], "fg") == 0){
+              //fg(); // Comprueba si el mandato pasado es fg y lo ejecuta
+            }
+            if (line->ncommands == 1){ // Número de mandatos igual a 1. Se excluyen jobs, cd y fg
+                pid = fork();
+*/
         }
-        printf("Traza 2");*/
-        
-        
 	//	if (line->redirect_input != NULL) {
 	//		printf("redirección de entrada: %s\n", line->redirect_input);
 	//	}
@@ -74,7 +78,7 @@ int main(void){
 
 
 
-//-----------Implementación de las subfunciones usadas-----------
+//-----------Implementación de las subfunciones usadas-----------\\
 
 void prompt(){
     char dir[1024];
@@ -84,14 +88,29 @@ void prompt(){
 
 void cd(tcommand cmd){
     char *dir;
-    char *dir2;
-    printf("Traza 3");
-    if (cmd.argc < 2){
-        dir = getenv("home");
+    
+    if (cmd.argc > 2){ // cd erróneo, más de 1 argumento pasado
+        fprintf(stderr, "Uso incorrecto del mandato cd\n");
+    } 
+    if (cmd.argc == 1){ // cd sin argumentos, nos lleva a $HOME
+        dir = getenv("HOME");
     } else{
-        dir = cmd.argv[1];
+        dir = cmd.argv[1]; // cd con un argumento, nos lleva al directorio pasado
     }
 
-    chdir(dir);
-    getcwd(dir2, 1024);
+    if (chdir(dir) != 0){
+        fprintf(stderr, "Error al cambiar de directorio: %s\n", strerror(errno));
+    }
+}
+
+int comandosCoincidentes(tcommand cmd, char *nombre){
+    char *nComando;
+
+    nComando = cmd.argv[0];
+    if (strcmp(nComando, nombre) == 0){
+        return 0;
+    }
+    else{
+        return 1;
+    }
 }
