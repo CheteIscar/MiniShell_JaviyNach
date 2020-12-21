@@ -79,7 +79,6 @@ int main(void){
                             if (line->background){
                                 signal(SIGINT, SIG_IGN);
                                 signal(SIGQUIT, SIG_IGN);
-                                waitpid(pid, &status, WNOHANG);
                             }
                             execvp(line->commands[0].argv[0], line->commands[0].argv);
                             fprintf(stderr, "Error en la ejecución del exec: %s\n", strerror(errno));
@@ -89,6 +88,9 @@ int main(void){
                             if (!(line->background)){
                                 wait(&status);              // HAY QUE AÑADIR EL CONTROL DEL WAIT DESPUÉS
                             }
+  //                          else{
+//                                waitpid(pid, &status, WNOHANG);
+    ////                        //}
                         }
                     }
                     else{ // Número de mandatos mayor o igual que dos, con pipes
