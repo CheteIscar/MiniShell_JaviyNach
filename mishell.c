@@ -57,7 +57,7 @@ int main(void){
               //fg(); // Comprueba si el mandato pasado es fg y lo ejecuta
             }*/
             if (existeComando(line) == 0){
-                if (comandosCoincidentes(line->commands[0], "cd") == 1){
+//                if (comandosCoincidentes(line->commands[0], "cd") == 1){
                     if (line->ncommands == 1){ // Número de mandatos igual a 1. Se excluyen jobs, cd y fg
                         pid = fork();
                         if (pid < 0){
@@ -76,12 +76,19 @@ int main(void){
                             if (line->redirect_error != NULL){
                                 redireccionError(line->redirect_error);
                             }
+                            if (line->background){
+                                signal(SIGINT, SIG_IGN);
+                                signal(SIGQUIT, SIG_IGN);
+                                waitpid(pid, &status, WNOHANG);
+                            }
                             execvp(line->commands[0].argv[0], line->commands[0].argv);
                             fprintf(stderr, "Error en la ejecución del exec: %s\n", strerror(errno));
                             exit(-1);
                         }
                         else{ // Proceso padre
-                            wait(NULL);              // HAY QUE AÑADIR EL CONTROL DEL WAIT DESPUÉS
+                            if (!(line->background)){
+                                wait(&status);              // HAY QUE AÑADIR EL CONTROL DEL WAIT DESPUÉS
+                            }
                         }
                     }
                     else{ // Número de mandatos mayor o igual que dos, con pipes
@@ -160,7 +167,7 @@ int main(void){
                         }
                     }
                 }
-            }
+  //          }
         }
 	//	if (line->redirect_input != NULL) {
 	//		printf("redirección de entrada: %s\n", line->redirect_input);
