@@ -40,6 +40,9 @@ void anadirBackground(pid_t pid, ProcesoBg **listaProcesos); // Mete en una list
 void manejadorBg(int sig); // Le dice al padre cuando un hijo en background ha terminado
 int buscarPid(pid_t pid, ProcesoBg *listaProcesos);
 void jobs(ProcesoBg *listaProcesos);
+void eliminarFinalizados(ProcesoBg *listaProcesos, pid_t *pBgFinalizados);
+void eliminarProceso(pid_t pid, ProcesoBg ***listaProcesos);
+
 
 //-----------Función main-----------\\
 
@@ -66,6 +69,9 @@ int main(void){
         listaProcesosBg = malloc(sizeof(ProcesoBg));
     	line = tokenize(buf);
     	if (line == NULL) {
+            if (boolProcesosFinalizados == 1){
+                eliminarFinalizados(&listaProcesosBg, pBgFinalizados);
+            }
 			continue;
 		}
         
@@ -107,43 +113,53 @@ int main(void){
                                     if (line->redirect_error != NULL){
                                         redireccionError(line->redirect_error);
                                     }
-                                  /*  if (line->background){
-                                        pid2 = fork();
-                                        signal(SIGINT, SIG_IGN);
-                                        signal(SIGQUIT, SIG_IGN);
-                                        if (pid2 == 0){
-                                            execvp(line->commands[0].argv[0], line->commands[0].argv);
-                                            fprintf(stderr, "Error en la ejecución del exec: %s\n", strerror(errno));
-                                            exit(1);
-                                        }
-                                        else{
-                                            kill(getppid(), SIGUSR1);
-                                            fprintf(stderr, "[%d] Hecho\t\t\t\t %s\n", pidBg, "Ho");
-                                            exit(0);
-                                        }
-
-                                    }
                                     execvp(line->commands[0].argv[0], line->commands[0].argv);
-                                    fprintf(stderr, "Error en la ejecución del exec: %s\n", strerror(errno));
+                                    fprintf(stderr, "\nError en la ejecución del exec: %s\n", strerror(errno));
                                     exit(1);
                                 }
-                                else{ // Proceso padre
-                                    if (!(line->background)){
-                                        wait(&status);              // HAY QUE AÑADIR EL CONTROL DEL WAIT DESPUÉS
-                                        if (WIFEXITED(status) != 0){
-                                            if (WEXITSTATUS(status) != 0){
-                                                fprintf(stderr, "Ha ocurrido un error en la ejecución del comando");
-                                            }
-                                        }
-                                    }
-                                    else{
-                                        anadirBackground(pid, &listaProcesosBg);
-                                        fprintf(stderr, "[%d] %d\n", nProcesos , (listaProcesosBg + (nProcesos - 1))->pid);
-                                        pidBg = buscarPid(pid, listaProcesosBg);
+                                else{
+                                    wait(&status);
+                                }
+                                kill(getppid(), SIGUSR1);
+                                exit(0);
+                            }
+                            else{
+                                anadirBackground(pid2, &listaProcesosBg);
+                                fprintf(stderr, "[%d] %d\n", nProcesos , (listaProcesosBg + (nProcesos - 1))->pid);
+                            }        
+                        }
+                        else{
+                            pid = fork();
+                            if (pid < 0){
+                                fprintf(stderr, "Ha fallado el fork()\n");
+                                exit(-1);
+                            }
+                            else if (pid == 0){ // Proceso hijo
+                                signal(SIGINT, SIG_DFL); // Activo el funcionamiento por defecto de estas señales cuando se ejecutan mandatos
+                                signal(SIGQUIT, SIG_DFL);
+                                if (line->redirect_input != NULL){
+                                    redireccionEntrada(line->redirect_input);
+                                }
+                                if (line->redirect_output != NULL){
+                                    redireccionSalida(line->redirect_output); // Tratamiento de redirecciones
+                                }
+                                if (line->redirect_error != NULL){
+                                    redireccionError(line->redirect_error);
+                                }
+                                execvp(line->commands[0].argv[0], line->commands[0].argv);
+                                fprintf(stderr, "Error en la ejecución del exec: %s\n", strerror(errno));
+                                exit(1);
+                            }
+                            else{ // Proceso padre
+                                wait(&status);              // HAY QUE AÑADIR EL CONTROL DEL WAIT DESPUÉS
+                                if (WIFEXITED(status) != 0){
+                                    if (WEXITSTATUS(status) != 0){
+                                        fprintf(stderr, "Ha ocurrido un error en la ejecución del comando");
                                     }
                                 }
                             }
-
+                        }
+                     }
                     /*  pid = fork();
                         if (pid < 0){
                             fprintf(stderr, "Ha fallado el fork()\n");
@@ -192,7 +208,7 @@ int main(void){
                             }
                             else{
                                 anadirBackground(pid, &listaProcesosBg);
-                                fprintf(stderr, "[%d] %d\n", nProcesos , (listaProcesosBg + (nProcesos - 1))->pid);
+                                printf(stderr, "[%d] %d\n", nProcesos , (listaProcesosBg + (nProcesos - 1))->pid);
                                 pidBg = buscarPid(pid, listaProcesosBg);
                             }
                         }
@@ -397,8 +413,7 @@ void anadirBackground(pid_t pid, ProcesoBg **listaProcesos){
 } 
 
 void manejadorBg(int sig){
-    fprintf(stderr, "1");
-    *(pBgFinalizados + nProcesosFinalizados) = waitpid(0, NULL, WNOHANG);
+    *(pBgFinalizados + nProcesosFinalizados) = waitpid(-1, NULL, 0);
     nProcesosFinalizados++;
     boolProcesosFinalizados = 1;
     pBgFinalizados = realloc(pBgFinalizados, (nProcesosFinalizados + 1) * sizeof(pid_t));
@@ -408,6 +423,37 @@ int buscarPid(pid_t pid, ProcesoBg *listaProcesos){
     int i;
 
     for (i = 0; i < nProcesos; i++){
-        if (listaProcesos->pid = pid) return listaProcesos->num; // Puede faltar asterisco
+        if ((listaProcesos + i)->pid = pid){ // Puede faltar asterisco
+            return 0; 
+        }
+    }
+    return 1;
+}
+
+void eliminarFinalizados(ProcesoBg *listaProcesos, pid_t *pBgFinalizados){
+    int i;
+
+    for (i = 0; i < nProcesosFinalizados; i++){
+        if (buscarPid(*(pBgFinalizados + i), listaProcesos) == 0){
+            eliminarProceso(*(pBgFinalizados + i), &listaProcesos);
+        }
     }
 }
+
+void eliminarProceso(pid_t pid, ProcesoBg  **listaProcesos){
+    int i;
+    ProcesoBg *aux;
+
+    aux = malloc(sizeof(ProcesoBg));
+    for(i = 0; i < nProcesos; i++){
+        if (*(listaProcesos + i)->pid != pid){
+            anadirBackground(*(listaProcesos + i)->pid,  &aux);
+        }
+    }
+    free(*listaProcesos);
+    *listaProcesos = aux;
+    nProcesos--;
+}
+
+
+      
