@@ -23,7 +23,19 @@ void redireccionEntrada(char *fichero); // Coge la entrada de un fichero dado en
 void redireccionSalida(char *fichero); // Pone la salida en un fichero dado en lugar de stout 
 int existeComando(tline *line); // Comprueba si existe el comando pasado
 void redireccionError(char *fichero); // Pone la salida de error en un fichero dado en lugar de stderr
+void anadirBackground(pid_t pid, ProcesoBg *listaProcesos);
 
+
+//-----------Variables globales y estructuras-----------\\
+
+typedef struct ProcesoBg
+{
+    int num;
+    pid_t pid;
+    char *comando;
+    struct ProcesoBg *siguiente;
+} ProcesoBg;
+    
 //-----------Función main-----------\\
 
 int main(void){ 
@@ -35,12 +47,15 @@ int main(void){
     int p[2];
     int status;
     int pipeExit;
+    ProcesoBg *listaProcesosBg;
 
     prompt();
     signal(SIGINT, SIG_IGN);
     signal(SIGQUIT, SIG_IGN); // Evito que se cierre la shell cuando recibe estas señales
 	while (fgets(buf, 1024, stdin)) {
 	    
+
+        listaProcesosBg = (ProcesoBg)* malloc(size(ProcesoBg));
     	line = tokenize(buf);
     	if (line == NULL) {
 			continue;
@@ -57,7 +72,7 @@ int main(void){
               //fg(); // Comprueba si el mandato pasado es fg y lo ejecuta
             }*/
             if (existeComando(line) == 0){
-//                if (comandosCoincidentes(line->commands[0], "cd") == 1){
+                if (comandosCoincidentes(line->commands[0], "cd") == 1){
                     if (line->ncommands == 1){ // Número de mandatos igual a 1. Se excluyen jobs, cd y fg
                         pid = fork();
                         if (pid < 0){
@@ -82,15 +97,20 @@ int main(void){
                             }
                             execvp(line->commands[0].argv[0], line->commands[0].argv);
                             fprintf(stderr, "Error en la ejecución del exec: %s\n", strerror(errno));
-                            exit(-1);
+                            exit(1);
                         }
                         else{ // Proceso padre
                             if (!(line->background)){
                                 wait(&status);              // HAY QUE AÑADIR EL CONTROL DEL WAIT DESPUÉS
+                                if (WIFEXITED(status) != 0){
+                                    if (WEXITSTATUS(status) != 0){
+                                        fprintf(stderr, "Ha ocurrido un error en la ejecución del comando");
+                                    }
+                                }
                             }
-  //                          else{
-//                                waitpid(pid, &status, WNOHANG);
-    ////                        //}
+                            else{
+                                anadirBackground(pid, listaProcesosBg);
+                            }
                         }
                     }
                     else{ // Número de mandatos mayor o igual que dos, con pipes
@@ -169,7 +189,7 @@ int main(void){
                         }
                     }
                 }
-  //          }
+            }
         }
 	//	if (line->redirect_input != NULL) {
 	//		printf("redirección de entrada: %s\n", line->redirect_input);
@@ -284,3 +304,6 @@ int existeComando(tline *line){
     }
     return 0;
 }
+
+void anadirBackground(pid_t pid, ProcesoBg *listaProcesos){
+    listaProcesos->numero++;
