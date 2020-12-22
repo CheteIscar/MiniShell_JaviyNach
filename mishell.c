@@ -13,6 +13,19 @@
 #include "parser.h"
 
 
+//-----------Variables globales y estructuras-----------\\
+
+typedef struct TProcesoBg
+{
+    int num;
+    pid_t pid;
+    char *comando;
+} ProcesoBg;
+
+int nProcesos = 0;    
+pid_t *pBgFinalizados;
+int nProcesosFinalizados = 0;
+int boolProcesosFinalizados = 0;
 
 //-----------Subfunciones usadas dentro del main-----------\\
 
@@ -23,19 +36,11 @@ void redireccionEntrada(char *fichero); // Coge la entrada de un fichero dado en
 void redireccionSalida(char *fichero); // Pone la salida en un fichero dado en lugar de stout 
 int existeComando(tline *line); // Comprueba si existe el comando pasado
 void redireccionError(char *fichero); // Pone la salida de error en un fichero dado en lugar de stderr
-void anadirBackground(pid_t pid, ProcesoBg *listaProcesos);
+void anadirBackground(pid_t pid, ProcesoBg **listaProcesos); // Mete en una lista todos los procesos que se ejecuten en background
+void manejadorBg(int sig); // Le dice al padre cuando un hijo en background ha terminado
+int buscarPid(pid_t pid, ProcesoBg *listaProcesos);
+void jobs(ProcesoBg *listaProcesos);
 
-
-//-----------Variables globales y estructuras-----------\\
-
-typedef struct ProcesoBg
-{
-    int num;
-    pid_t pid;
-    char *comando;
-    struct ProcesoBg *siguiente;
-} ProcesoBg;
-    
 //-----------Función main-----------\\
 
 int main(void){ 
@@ -48,14 +53,17 @@ int main(void){
     int status;
     int pipeExit;
     ProcesoBg *listaProcesosBg;
+    int pidBg;
+    pid_t pid2;
 
     prompt();
     signal(SIGINT, SIG_IGN);
     signal(SIGQUIT, SIG_IGN); // Evito que se cierre la shell cuando recibe estas señales
+    signal(SIGUSR1, manejadorBg);
 	while (fgets(buf, 1024, stdin)) {
 	    
-
-        listaProcesosBg = (ProcesoBg)* malloc(size(ProcesoBg));
+        pBgFinalizados = malloc(sizeof(pid_t));
+        listaProcesosBg = malloc(sizeof(ProcesoBg));
     	line = tokenize(buf);
     	if (line == NULL) {
 			continue;
@@ -63,7 +71,12 @@ int main(void){
         
         if (line->ncommands > 0){ // Números de mandatos mayor que 0
             if (comandosCoincidentes(line->commands[0],"cd") == 0){ 
-                cd(line->commands[0]); // Comprueba si el mandato pasado es cd y lo ejecuta 
+                if (line->ncommands > 1){
+                    fprintf(stderr, "El cd no se puede usar con pipes");
+                }
+                else{
+                    cd(line->commands[0]); // Comprueba si el mandato pasado es cd y lo ejecuta 
+                }
             }
            /* if (comandosCoincidentes(line->commands[0], "jobs") == 0){
               //jobs(); // Comprueba si el mandato pasado es jobs y lo ejecuta
@@ -72,9 +85,66 @@ int main(void){
               //fg(); // Comprueba si el mandato pasado es fg y lo ejecuta
             }*/
             if (existeComando(line) == 0){
-                if (comandosCoincidentes(line->commands[0], "cd") == 1){
+                if (comandosCoincidentes(line->commands[0], "cd") == 1 && comandosCoincidentes(line->commands[0], "fg") == 1){
                     if (line->ncommands == 1){ // Número de mandatos igual a 1. Se excluyen jobs, cd y fg
-                        pid = fork();
+                        if (line->background){
+                            pid2 = fork();
+                            if (pid2 == 0){
+                                pid = fork();
+                                if (pid < 0){
+                                    fprintf(stderr, "Ha fallado el fork()\n");
+                                    exit(-1);
+                                }
+                                else if (pid == 0){ // Proceso hijo
+                                    signal(SIGINT, SIG_DFL); // Activo el funcionamiento por defecto de estas señales cuando se ejecutan mandatos
+                                    signal(SIGQUIT, SIG_DFL);
+                                    if (line->redirect_input != NULL){
+                                        redireccionEntrada(line->redirect_input);
+                                    }
+                                    if (line->redirect_output != NULL){
+                                        redireccionSalida(line->redirect_output); // Tratamiento de redirecciones
+                                    }
+                                    if (line->redirect_error != NULL){
+                                        redireccionError(line->redirect_error);
+                                    }
+                                  /*  if (line->background){
+                                        pid2 = fork();
+                                        signal(SIGINT, SIG_IGN);
+                                        signal(SIGQUIT, SIG_IGN);
+                                        if (pid2 == 0){
+                                            execvp(line->commands[0].argv[0], line->commands[0].argv);
+                                            fprintf(stderr, "Error en la ejecución del exec: %s\n", strerror(errno));
+                                            exit(1);
+                                        }
+                                        else{
+                                            kill(getppid(), SIGUSR1);
+                                            fprintf(stderr, "[%d] Hecho\t\t\t\t %s\n", pidBg, "Ho");
+                                            exit(0);
+                                        }
+
+                                    }
+                                    execvp(line->commands[0].argv[0], line->commands[0].argv);
+                                    fprintf(stderr, "Error en la ejecución del exec: %s\n", strerror(errno));
+                                    exit(1);
+                                }
+                                else{ // Proceso padre
+                                    if (!(line->background)){
+                                        wait(&status);              // HAY QUE AÑADIR EL CONTROL DEL WAIT DESPUÉS
+                                        if (WIFEXITED(status) != 0){
+                                            if (WEXITSTATUS(status) != 0){
+                                                fprintf(stderr, "Ha ocurrido un error en la ejecución del comando");
+                                            }
+                                        }
+                                    }
+                                    else{
+                                        anadirBackground(pid, &listaProcesosBg);
+                                        fprintf(stderr, "[%d] %d\n", nProcesos , (listaProcesosBg + (nProcesos - 1))->pid);
+                                        pidBg = buscarPid(pid, listaProcesosBg);
+                                    }
+                                }
+                            }
+
+                    /*  pid = fork();
                         if (pid < 0){
                             fprintf(stderr, "Ha fallado el fork()\n");
                             exit(-1);
@@ -92,8 +162,20 @@ int main(void){
                                 redireccionError(line->redirect_error);
                             }
                             if (line->background){
+                                pid2 = fork();
                                 signal(SIGINT, SIG_IGN);
                                 signal(SIGQUIT, SIG_IGN);
+                                if (pid2 == 0){
+                                    execvp(line->commands[0].argv[0], line->commands[0].argv);
+                                    fprintf(stderr, "Error en la ejecución del exec: %s\n", strerror(errno));
+                                    exit(1);
+                                }
+                                else{
+                                    kill(getppid(), SIGUSR1);
+                                    fprintf(stderr, "[%d] Hecho\t\t\t\t %s\n", pidBg, "Ho");
+                                    exit(0);
+                                }
+
                             }
                             execvp(line->commands[0].argv[0], line->commands[0].argv);
                             fprintf(stderr, "Error en la ejecución del exec: %s\n", strerror(errno));
@@ -109,10 +191,12 @@ int main(void){
                                 }
                             }
                             else{
-                                anadirBackground(pid, listaProcesosBg);
+                                anadirBackground(pid, &listaProcesosBg);
+                                fprintf(stderr, "[%d] %d\n", nProcesos , (listaProcesosBg + (nProcesos - 1))->pid);
+                                pidBg = buscarPid(pid, listaProcesosBg);
                             }
                         }
-                    }
+                    }*/
                     else{ // Número de mandatos mayor o igual que dos, con pipes
                         pHijos = malloc(line->ncommands * sizeof(pid_t));
 
@@ -305,5 +389,25 @@ int existeComando(tline *line){
     return 0;
 }
 
-void anadirBackground(pid_t pid, ProcesoBg *listaProcesos){
-    listaProcesos->numero++;
+void anadirBackground(pid_t pid, ProcesoBg **listaProcesos){
+    (*listaProcesos + nProcesos)->num = nProcesos + 1;
+    (*listaProcesos + nProcesos)->pid = pid;
+    nProcesos++;
+    *listaProcesos = realloc(*listaProcesos, (nProcesos + 1) * sizeof(ProcesoBg));
+} 
+
+void manejadorBg(int sig){
+    fprintf(stderr, "1");
+    *(pBgFinalizados + nProcesosFinalizados) = waitpid(0, NULL, WNOHANG);
+    nProcesosFinalizados++;
+    boolProcesosFinalizados = 1;
+    pBgFinalizados = realloc(pBgFinalizados, (nProcesosFinalizados + 1) * sizeof(pid_t));
+}
+
+int buscarPid(pid_t pid, ProcesoBg *listaProcesos){
+    int i;
+
+    for (i = 0; i < nProcesos; i++){
+        if (listaProcesos->pid = pid) return listaProcesos->num; // Puede faltar asterisco
+    }
+}
