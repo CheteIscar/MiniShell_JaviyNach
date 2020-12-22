@@ -19,13 +19,14 @@ typedef struct TProcesoBg
 {
     int num;
     pid_t pid;
-    char *comando;
+    char *line;
 } ProcesoBg;
 
 int nProcesos = 0;    
 pid_t *pBgFinalizados;
 int nProcesosFinalizados = 0;
 int boolProcesosFinalizados = 0;
+char buf[1024];
 
 //-----------Subfunciones usadas dentro del main-----------\\
 
@@ -36,8 +37,8 @@ void redireccionEntrada(char *fichero); // Coge la entrada de un fichero dado en
 void redireccionSalida(char *fichero); // Pone la salida en un fichero dado en lugar de stout 
 int existeComando(tline *line); // Comprueba si existe el comando pasado
 void redireccionError(char *fichero); // Pone la salida de error en un fichero dado en lugar de stderr
-void anadirBackground(pid_t pid, ProcesoBg **listaProcesos); // Mete en una lista todos los procesos que se ejecuten en background
-void manejadorBg(int sig); // Le dice al padre cuando un hijo en background ha terminado
+void anadirBackground(pid_t pid, ProcesoBg **listaProcesos, char *buf); // Mete en una lista todos los procesos que se ejecuten en background
+void manejadorBg(); // Le dice al padre cuando un hijo en background ha terminado
 int buscarPid(pid_t pid, ProcesoBg *listaProcesos); // Busca el pid de un proceso en la lista de procesos en background
 void jobs(ProcesoBg *listaProcesos); // Mandato interno jobs
 void eliminarFinalizados(ProcesoBg **listaProcesos, pid_t *pBgFinalizados); // Elimina todos los procesos finalizados de la liste de procesos en background
@@ -47,7 +48,6 @@ void eliminarProceso(pid_t pid, ProcesoBg **listaProcesos); // Elimina el proces
 //-----------Función main-----------\\
 
 int main(void){ 
-	char buf[1024];
 	tline *line;
 	int i,j;
     pid_t pid;
@@ -56,7 +56,6 @@ int main(void){
     int status;
     int pipeExit;
     ProcesoBg *listaProcesosBg;
-    int pidBg;
     pid_t pid2; // Se usa para el fork del proceso de los comandos en background
 
     prompt();
@@ -124,7 +123,7 @@ int main(void){
                                 exit(0);
                             }
                             else{
-                                anadirBackground(pid2, &listaProcesosBg);
+                                anadirBackground(pid2, &listaProcesosBg, buf);
                                 fprintf(stderr, "[%d] %d\n", nProcesos , (listaProcesosBg + (nProcesos - 1))->pid);
                             }        
                         }
@@ -387,14 +386,15 @@ int existeComando(tline *line){
     return 0;
 }
 
-void anadirBackground(pid_t pid, ProcesoBg **listaProcesos){
+void anadirBackground(pid_t pid, ProcesoBg **listaProcesos, char *buf){
     (*listaProcesos + nProcesos)->num = nProcesos + 1;
     (*listaProcesos + nProcesos)->pid = pid;
+    (*listaProcesos + nProcesos)->line = buf;
     nProcesos++;
     *listaProcesos = realloc(*listaProcesos, (nProcesos + 1) * sizeof(ProcesoBg));
 } 
 
-void manejadorBg(int sig){
+void manejadorBg(){
     *(pBgFinalizados + nProcesosFinalizados) = waitpid(-1, NULL, 0);
     nProcesosFinalizados++;
     boolProcesosFinalizados = 1;
@@ -429,7 +429,7 @@ void eliminarProceso(pid_t pid, ProcesoBg **listaProcesos){
     aux = malloc(sizeof(ProcesoBg));
     for(i = 0; i < nProcesos; i++){
         if ((*(listaProcesos) + i)->pid != pid){
-            anadirBackground((*(listaProcesos) + i)->pid,  &aux);
+            anadirBackground((*(listaProcesos) + i)->pid,  &aux, (*(listaProcesos) + i)->line);
         }
     }
     free(*listaProcesos);
@@ -441,7 +441,7 @@ void jobs(ProcesoBg *listaProcesos){
     int i;
 
     for (i = 0; i < nProcesos; i++){
-        fprintf(stdout, "[%d] Ejecutando \t\t\t\t %s\n", (listaProcesos + i)->num, "ho");
+        fprintf(stderr, "[%d] Ejecutando \t\t\t\t %s\n", (listaProcesos + i)->num, (listaProcesos + i)->line);
     }
 }
       
