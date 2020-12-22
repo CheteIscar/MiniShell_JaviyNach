@@ -38,10 +38,10 @@ int existeComando(tline *line); // Comprueba si existe el comando pasado
 void redireccionError(char *fichero); // Pone la salida de error en un fichero dado en lugar de stderr
 void anadirBackground(pid_t pid, ProcesoBg **listaProcesos); // Mete en una lista todos los procesos que se ejecuten en background
 void manejadorBg(int sig); // Le dice al padre cuando un hijo en background ha terminado
-int buscarPid(pid_t pid, ProcesoBg *listaProcesos);
-void jobs(ProcesoBg *listaProcesos);
-void eliminarFinalizados(ProcesoBg *listaProcesos, pid_t *pBgFinalizados);
-void eliminarProceso(pid_t pid, ProcesoBg ***listaProcesos);
+int buscarPid(pid_t pid, ProcesoBg *listaProcesos); // Busca el pid de un proceso en la lista de procesos en background
+void jobs(ProcesoBg *listaProcesos); // Mandato interno jobs
+void eliminarFinalizados(ProcesoBg **listaProcesos, pid_t *pBgFinalizados); // Elimina todos los procesos finalizados de la liste de procesos en background
+void eliminarProceso(pid_t pid, ProcesoBg **listaProcesos); // Elimina el proceso de pid = pid de la lista de procesos en background
 
 
 //-----------Función main-----------\\
@@ -57,7 +57,7 @@ int main(void){
     int pipeExit;
     ProcesoBg *listaProcesosBg;
     int pidBg;
-    pid_t pid2;
+    pid_t pid2; // Se usa para el fork del proceso de los comandos en background
 
     prompt();
     signal(SIGINT, SIG_IGN);
@@ -84,10 +84,10 @@ int main(void){
                     cd(line->commands[0]); // Comprueba si el mandato pasado es cd y lo ejecuta 
                 }
             }
-           /* if (comandosCoincidentes(line->commands[0], "jobs") == 0){
-              //jobs(); // Comprueba si el mandato pasado es jobs y lo ejecuta
+            if (comandosCoincidentes(line->commands[0], "jobs") == 0){
+                jobs(listaProcesosBg); // Comprueba si el mandato pasado es jobs y lo ejecuta
             }
-            if (comandosCoincidentes(line->commands[0], "fg") == 0){
+          /*  if (comandosCoincidentes(line->commands[0], "fg") == 0){
               //fg(); // Comprueba si el mandato pasado es fg y lo ejecuta
             }*/
             if (existeComando(line) == 0){
@@ -291,24 +291,6 @@ int main(void){
                 }
             }
         }
-	//	if (line->redirect_input != NULL) {
-	//		printf("redirección de entrada: %s\n", line->redirect_input);
-	//	}
-	//	if (line->redirect_output != NULL) {
-	//		printf("redirección de salida: %s\n", line->redirect_output);
-	//	}
-	//	if (line->redirect_error != NULL) {
-	//		printf("redirección de error: %s\n", line->redirect_error);
-	//	}
-	//	if (line->background) {
-	//		printf("comando a ejecutarse en background\n");
-	//	} 
-	//	for (i=0; i<line->ncommands; i++) {
-	//		printf("orden %d (%s):\n", i, line->commands[i].filename);
-	//		for (j=0; j<line->commands[i].argc; j++) {
-	//			printf("  argumento %d: %s\n", j, line->commands[i].argv[j]);
-	//		}
-	//	}
         prompt(); 
 	}
 	return 0;
@@ -430,24 +412,24 @@ int buscarPid(pid_t pid, ProcesoBg *listaProcesos){
     return 1;
 }
 
-void eliminarFinalizados(ProcesoBg *listaProcesos, pid_t *pBgFinalizados){
+void eliminarFinalizados(ProcesoBg **listaProcesos, pid_t *pBgFinalizados){
     int i;
 
     for (i = 0; i < nProcesosFinalizados; i++){
-        if (buscarPid(*(pBgFinalizados + i), listaProcesos) == 0){
-            eliminarProceso(*(pBgFinalizados + i), &listaProcesos);
+        if (buscarPid(*(pBgFinalizados + i), *listaProcesos) == 0){
+            eliminarProceso(*(pBgFinalizados + i), listaProcesos);
         }
     }
 }
 
-void eliminarProceso(pid_t pid, ProcesoBg  **listaProcesos){
+void eliminarProceso(pid_t pid, ProcesoBg **listaProcesos){
     int i;
     ProcesoBg *aux;
 
     aux = malloc(sizeof(ProcesoBg));
     for(i = 0; i < nProcesos; i++){
-        if (*(listaProcesos + i)->pid != pid){
-            anadirBackground(*(listaProcesos + i)->pid,  &aux);
+        if ((*(listaProcesos) + i)->pid != pid){
+            anadirBackground((*(listaProcesos) + i)->pid,  &aux);
         }
     }
     free(*listaProcesos);
@@ -455,5 +437,11 @@ void eliminarProceso(pid_t pid, ProcesoBg  **listaProcesos){
     nProcesos--;
 }
 
+void jobs(ProcesoBg *listaProcesos){
+    int i;
 
+    for (i = 0; i < nProcesos; i++){
+        fprintf(stdout, "[%d] Ejecutando \t\t\t\t %s\n", (listaProcesos + i)->num, "ho");
+    }
+}
       
