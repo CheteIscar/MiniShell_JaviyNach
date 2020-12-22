@@ -19,7 +19,7 @@ typedef struct TProcesoBg
 {
     int num;
     pid_t pid;
-    char *line;
+    char *comandos;
 } ProcesoBg;
 
 int nProcesos = 0;    
@@ -389,7 +389,7 @@ int existeComando(tline *line){
 void anadirBackground(pid_t pid, ProcesoBg **listaProcesos, char *buf){
     (*listaProcesos + nProcesos)->num = nProcesos + 1;
     (*listaProcesos + nProcesos)->pid = pid;
-    (*listaProcesos + nProcesos)->line = buf;
+    (*listaProcesos + nProcesos)->comandos = buf;
     nProcesos++;
     *listaProcesos = realloc(*listaProcesos, (nProcesos + 1) * sizeof(ProcesoBg));
 } 
@@ -415,6 +415,7 @@ int buscarPid(pid_t pid, ProcesoBg *listaProcesos){
 void eliminarFinalizados(ProcesoBg **listaProcesos, pid_t *pBgFinalizados){
     int i;
 
+    boolProcesosFinalizados = 0;
     for (i = 0; i < nProcesosFinalizados; i++){
         if (buscarPid(*(pBgFinalizados + i), *listaProcesos) == 0){
             eliminarProceso(*(pBgFinalizados + i), listaProcesos);
@@ -429,7 +430,7 @@ void eliminarProceso(pid_t pid, ProcesoBg **listaProcesos){
     aux = malloc(sizeof(ProcesoBg));
     for(i = 0; i < nProcesos; i++){
         if ((*(listaProcesos) + i)->pid != pid){
-            anadirBackground((*(listaProcesos) + i)->pid,  &aux, (*(listaProcesos) + i)->line);
+            anadirBackground((*(listaProcesos) + i)->pid,  &aux, (*(listaProcesos) + i)->comandos);
         }
     }
     free(*listaProcesos);
@@ -441,7 +442,8 @@ void jobs(ProcesoBg *listaProcesos){
     int i;
 
     for (i = 0; i < nProcesos; i++){
-        fprintf(stderr, "[%d] Ejecutando \t\t\t\t %s\n", (listaProcesos + i)->num, (listaProcesos + i)->line);
+        fprintf(stderr, "[%d] Ejecutando \t\t\t\t %s\n", (listaProcesos + i)->num, (listaProcesos + i)->comandos);
     }
 }
       
+//void fg(tline *line, ProcesoBg *
